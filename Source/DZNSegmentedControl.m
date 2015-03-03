@@ -11,18 +11,20 @@
 #import "DZNSegmentedControl.h"
 
 @interface DZNSegmentedControl ()
+
 @property (nonatomic) BOOL initializing;
 @property (nonatomic, strong) UIView *selectionIndicator;
 @property (nonatomic, strong) UIView *hairline;
-@property (nonatomic, strong) NSMutableDictionary *colors;
+@property (nonatomic, strong) NSMutableDictionary *titleColors;
+@property (nonatomic, strong) NSMutableDictionary *countColors;
 @property (nonatomic, strong) NSMutableArray *counts; // of NSNumber
 @property (nonatomic, getter = isTransitioning) BOOL transitioning;
+
 @end
 
 @implementation DZNSegmentedControl
+
 @synthesize barPosition = _barPosition;
-@synthesize height = _height;
-@synthesize width = _width;
 
 #pragma mark - Initialize Methods
 
@@ -32,11 +34,11 @@
     
     _showsCount = YES;
     _selectedSegmentIndex = -1;
+    _font = [UIFont systemFontOfSize:15.0f];
     _selectionIndicatorHeight = 2.0f;
     _animationDuration = 0.2;
     _autoAdjustSelectionIndicatorWidth = YES;
-    _font = [UIFont systemFontOfSize:15.0f];
-
+    
     _selectionIndicator = [UIView new];
     _selectionIndicator.backgroundColor = self.tintColor;
     [self addSubview:_selectionIndicator];
@@ -45,9 +47,10 @@
     _hairline.backgroundColor = [UIColor lightGrayColor];
     [self addSubview:_hairline];
     
-    _colors = [NSMutableDictionary new];
+    _titleColors = [NSMutableDictionary new];
+    _countColors = [NSMutableDictionary new];
     _counts = [NSMutableArray array];
-    
+
     _initializing = NO;
 }
 
@@ -104,7 +107,6 @@
 - (void)layoutSubviews
 {
     [super layoutSubviews];
-    
     [self sizeToFit];
     
     if ([self buttons].count == 0) {
@@ -115,14 +117,14 @@
     }
     
     [[self buttons] enumerateObjectsUsingBlock:^(UIButton *button, NSUInteger idx, BOOL *stop) {
-        
+
         CGRect rect = CGRectMake(roundf(self.bounds.size.width/self.numberOfSegments)*idx, 0.0f, roundf(self.bounds.size.width/self.numberOfSegments),
                                  self.bounds.size.height);
         [button setFrame:rect];
-        
+
         CGFloat topInset = (self.barPosition > UIBarPositionBottom) ? -4.0f : 4.0f;
         [button setTitleEdgeInsets:UIEdgeInsetsMake(0.0f, 0.0f, topInset, 0.0f)];
-        
+
         if (idx == self.selectedSegmentIndex) {
             button.selected = YES;
         }
@@ -137,8 +139,10 @@
 - (void)willMoveToSuperview:(UIView *)newSuperview
 {
     [super willMoveToSuperview:newSuperview];
-    
-    [self layoutIfNeeded];
+
+    if (newSuperview) {
+        [self layoutIfNeeded];
+    }
 }
 
 - (void)didMoveToWindow
@@ -148,7 +152,6 @@
     }
     
     [self configureSegments];
-    
     [self layoutIfNeeded];
 }
 
@@ -156,7 +159,6 @@
 {
     return CGSizeMake(self.width, self.height);
 }
-
 
 #pragma mark - Getter Methods
 
@@ -178,7 +180,6 @@
 - (NSArray *)buttons
 {
     NSMutableArray *buttons = [NSMutableArray arrayWithCapacity:self.items.count];
-    
     for (UIView *view in self.subviews) {
         if ([view isKindOfClass:[UIButton class]]) {
             [buttons addObject:view];
@@ -190,7 +191,7 @@
 - (UIButton *)buttonAtIndex:(NSUInteger)segment
 {
     if (self.items.count > 0 && segment < [self buttons].count) {
-        return (UIButton *)[[self buttons] objectAtIndex:segment];
+        return (UIButton *)[self buttons][segment];
     }
     return nil;
 }
@@ -198,7 +199,7 @@
 - (UIButton *)selectedButton
 {
     if (self.selectedSegmentIndex >= 0) {
-        return [self buttonAtIndex:self.selectedSegmentIndex];
+        return [self buttonAtIndex:(NSUInteger)self.selectedSegmentIndex];
     }
     return nil;
 }
@@ -218,7 +219,9 @@
         if (components.count == 2) {
             return components[self.inverseTitles ? 0 : 1];
         }
-        else return nil;
+        else {
+            return nil;
+        }
     }
     return self.items[segment];
 }
@@ -230,9 +233,7 @@
 
 - (UIColor *)titleColorForState:(UIControlState)state
 {
-    NSString *key = [NSString stringWithFormat:@"UIControlState%d", (int)state];
-    UIColor *color = [self.colors objectForKey:key];
-    
+    UIColor *color = self.titleColors[@(state)];
     if (!color) {
         switch (state) {
             case UIControlStateNormal:              return [UIColor darkGrayColor];
@@ -250,7 +251,7 @@
 {
     CGRect frame = CGRectZero;
     UIButton *button = [self selectedButton];
-    NSString *title = [self titleForSegmentAtIndex:button.tag];
+    NSString *title = [self titleForSegmentAtIndex:(NSUInteger)button.tag];
     
     if (title.length == 0) {
         return frame;
@@ -259,13 +260,10 @@
     frame.origin.y = (_barPosition > UIBarPositionBottom) ? 0.0f : (button.frame.size.height-self.selectionIndicatorHeight);
     
     if (self.autoAdjustSelectionIndicatorWidth) {
-        
         id attributes = nil;
         
         if (!self.showsCount) {
-            
             NSAttributedString *attributedString = [button attributedTitleForState:UIControlStateSelected];
-            
             if (attributedString.string.length == 0) {
                 return CGRectZero;
             }
@@ -301,7 +299,7 @@
 // Calculate the most appropriate font size for a button title
 - (CGFloat)appropriateFontSizeForTitle:(NSString *)title
 {
-    CGFloat fontSize = 14.0f;
+    CGFloat fontSize = 12.0f;
     CGFloat minFontSize = 8.0f;
     
     if (!self.adjustsFontSizeToFitWidth) {
@@ -309,13 +307,11 @@
     }
     
     CGFloat buttonWidth = roundf(self.bounds.size.width/self.numberOfSegments);
-    
     CGSize constraintSize = CGSizeMake(buttonWidth, MAXFLOAT);
     
     do {
         // Creates a new font instance with the current font size
         UIFont *font = [UIFont fontWithName:self.font.fontName size:fontSize];
-        
         CGRect textRect = [title boundingRectWithSize:constraintSize options:0 attributes:@{NSFontAttributeName:font} context:nil];
         
         // If the new text rect's width matches the constraint width, return the font size
@@ -334,30 +330,6 @@
 
 #pragma mark - Setter Methods
 
-- (void)setFrame:(CGRect)frame
-{
-    _width = CGRectGetWidth(frame);
-    _height = CGRectGetHeight(frame);
-    
-    [super setFrame:frame];
-    
-    [self layoutIfNeeded];
-}
-
-- (void)setHeight:(CGFloat)height
-{
-    _height = height;
-    
-    [self layoutSubviews];
-}
-
-- (void)setWidth:(CGFloat)width
-{
-    _width = width;
-    
-    [self layoutSubviews];
-}
-
 - (void)setTintColor:(UIColor *)color
 {
     if (!color || !self.items || self.initializing) {
@@ -365,7 +337,7 @@
     }
     
     [super setTintColor:color];
-    
+
     [self setTitleColor:color forState:UIControlStateHighlighted];
     [self setTitleColor:color forState:UIControlStateSelected];
 }
@@ -396,11 +368,54 @@
 
 - (void)setSelectedSegmentIndex:(NSInteger)segment
 {
-    if (segment > self.numberOfSegments-1) {
+    [self setSelectedIndex:segment animated:YES];
+}
+
+- (void)setSelectedIndex:(NSInteger)segment animated:(BOOL)animated
+{
+    if (segment > self.numberOfSegments - 1) {
         segment = 0;
     }
+    [self private_selectSegmentAtIndex:(NSUInteger)segment animated:animated];
+}
+
+- (void)private_selectSegmentAtIndex:(NSUInteger)segment animated:(BOOL)animated
+{
+    if (self.selectedSegmentIndex == segment || self.isTransitioning) {
+        return;
+    }
+
+    [self disableAllButtonsSelection];
+    [self enableAllButtonsInteraction:NO];
+
+    _selectedSegmentIndex = segment;
+//    _transitioning = YES;
+
+    void (^selectionIndicatorUpdateBlock)() = ^{
+        self.selectionIndicator.frame = [self selectionIndicatorRect];
+    };
+    if (animated) {
+        UIButton *button = [self buttonAtIndex:segment];
+        CGFloat damping = !self.bouncySelectionIndicator ? : 0.65f;
+        CGFloat velocity = !self.bouncySelectionIndicator ? : 0.5f;
+        CGFloat duration = (self.selectedSegmentIndex < 0.0f) ? 0.0f : self.animationDuration;
+        [UIView animateWithDuration:duration
+                              delay:0.0f
+             usingSpringWithDamping:damping
+              initialSpringVelocity:velocity
+                            options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionCurveEaseInOut
+                         animations:selectionIndicatorUpdateBlock
+                         completion:^(BOOL finished) {
+                             [self enableAllButtonsInteraction:YES];
+                             button.userInteractionEnabled = NO;
+                             _transitioning = NO;
+                         }];
+    }
+    else {
+        selectionIndicatorUpdateBlock();
+    }
     
-    [self setSelected:YES forSegmentAtIndex:segment];
+    [self sendActionsForControlEvents:UIControlEventValueChanged];
 }
 
 - (void)setTitle:(NSString *)title forSegmentAtIndex:(NSUInteger)segment
@@ -436,7 +451,7 @@
     NSAssert(segment >= 0, @"Cannot assign a title to a negative segment.");
     
     self.counts[segment] = count;
-        
+
     [self configureSegments];
 }
 
@@ -466,7 +481,6 @@
     
     NSAssert(segment < self.numberOfSegments, @"Cannot assign a tint color to non-existing segment.");
     NSAssert(segment >= 0, @"Cannot assign a tint color to a negative segment.");
-    
     NSAssert([tintColor isKindOfClass:[UIColor class]], @"Cannot assign a tint color with an unvalid color object.");
     
     UIButton *button = [self buttonAtIndex:segment];
@@ -476,100 +490,70 @@
 - (void)setTitleColor:(UIColor *)color forState:(UIControlState)state
 {
     NSAssert([color isKindOfClass:[UIColor class]], @"Cannot assign a title color with an unvalid color object.");
-    
+    self.titleColors[@(state)] = color;
+    [self private_updateButtonTitlesForState:state];
+}
+
+- (void)setCountColor:(UIColor *)color forState:(UIControlState)state
+{
+    NSAssert([color isKindOfClass:[UIColor class]], @"Cannot assign a count color with an unvalid color object.");
+    self.countColors[@(state)] = color;
+    [self private_updateButtonTitlesForState:state];
+}
+
+- (void)private_updateButtonTitlesForState:(UIControlState)state
+{
     for (UIButton *button in [self buttons]) {
-        
         NSMutableAttributedString *attributedString = [[NSMutableAttributedString alloc] initWithAttributedString:[button attributedTitleForState:state]];
         NSString *string = attributedString.string;
-        
+
         NSMutableParagraphStyle *style  = [[NSMutableParagraphStyle alloc] init];
         style.alignment = NSTextAlignmentCenter;
         style.lineBreakMode = (self.showsCount) ? NSLineBreakByWordWrapping : NSLineBreakByTruncatingTail;
         style.lineBreakMode = NSLineBreakByWordWrapping;
-        style.minimumLineHeight = 20.0f;
-        
+        style.minimumLineHeight = 10.0f;
+
         [attributedString addAttribute:NSParagraphStyleAttributeName value:style range:NSMakeRange(0, string.length)];
-        
+
+        UIColor *titleColor = self.titleColors[@(state)] ?: self.tintColor;
+        UIColor *countColor = self.countColors[@(state)] ?: [titleColor colorWithAlphaComponent:0.5f];
+
         if (self.showsCount) {
-            
             NSArray *components = [attributedString.string componentsSeparatedByString:@"\n"];
-            
             if (components.count < 2) {
                 return;
             }
 
-            NSString *count = [components objectAtIndex:self.inverseTitles ? 1 : 0];
-            NSString *title = [components objectAtIndex:self.inverseTitles ? 0 : 1];
-            
+            NSString *count = components[self.inverseTitles ? 1 : 0];
+            NSString *title = components[self.inverseTitles ? 0 : 1];
             CGFloat fontSizeForTitle = [self appropriateFontSizeForTitle:title];
-            
-            [attributedString addAttribute:NSFontAttributeName value:[UIFont fontWithName:self.font.fontName size:19.0f] range:[string rangeOfString:count]];
-            [attributedString addAttribute:NSFontAttributeName value:[UIFont fontWithName:self.font.fontName size:fontSizeForTitle] range:[string rangeOfString:title]];
-            
-            if (state == UIControlStateNormal) {
-                
-                UIColor *topColor = self.inverseTitles ? [color colorWithAlphaComponent:0.5f] : color;
-                UIColor *bottomColor = self.inverseTitles ? color : [color colorWithAlphaComponent:0.5f];
 
+            [attributedString addAttribute:NSFontAttributeName value:[UIFont boldSystemFontOfSize:20.0f] range:[string rangeOfString:count]];
+            [attributedString addAttribute:NSFontAttributeName value:[UIFont fontWithName:self.font.fontName size:fontSizeForTitle] range:[string rangeOfString:title]];
+
+            if (state == UIControlStateNormal) {
+                UIColor *topColor = self.inverseTitles ? countColor : titleColor;
+                UIColor *bottomColor = self.inverseTitles ? titleColor : countColor;
                 NSUInteger topLength = self.inverseTitles ? title.length : count.length;
                 NSUInteger bottomLength = self.inverseTitles ? count.length : title.length;
-                
+
                 [attributedString addAttribute:NSForegroundColorAttributeName value:topColor range:NSMakeRange(0, topLength)];
                 [attributedString addAttribute:NSForegroundColorAttributeName value:bottomColor range:NSMakeRange(topLength, bottomLength+1)];
             }
             else {
-                [attributedString addAttribute:NSForegroundColorAttributeName value:color range:NSMakeRange(0, string.length)];
-                
+                [attributedString addAttribute:NSForegroundColorAttributeName value:self.tintColor range:NSMakeRange(0, string.length)];
                 if (state == UIControlStateSelected) {
-                    self.selectionIndicator.backgroundColor = color;
+                    self.selectionIndicator.backgroundColor = self.tintColor;
                 }
             }
-        } else {
-            [attributedString addAttribute:NSFontAttributeName value:self.font range:NSMakeRange(0, attributedString.string.length)];
-            [attributedString addAttribute:NSForegroundColorAttributeName value:color range:NSMakeRange(0, attributedString.string.length)];
         }
-        
+        else {
+            [attributedString addAttribute:NSFontAttributeName value:self.font range:NSMakeRange(0, attributedString.string.length)];
+            [attributedString addAttribute:NSForegroundColorAttributeName value:titleColor range:NSMakeRange(0, attributedString.string.length)];
+        }
+
         [button setAttributedTitle:attributedString forState:state];
     }
-    
-    NSString *key = [NSString stringWithFormat:@"UIControlState%d", (int)state];
-    [self.colors setObject:color forKey:key];
-}
-
-- (void)setSelected:(BOOL)selected forSegmentAtIndex:(NSUInteger)segment
-{
-    if (self.selectedSegmentIndex == segment || self.isTransitioning) {
-        return;
-    }
-    
-    [self disableAllButtonsSelection];
-    [self enableAllButtonsInteraction:NO];
-    
-    CGFloat duration = (self.selectedSegmentIndex < 0.0f) ? 0.0f : self.animationDuration;
-    
-    _selectedSegmentIndex = segment;
-    _transitioning = YES;
-    
-    UIButton *button = [self buttonAtIndex:segment];
-    
-    CGFloat damping = !self.bouncySelectionIndicator ? : 0.65f;
-    CGFloat velocity = !self.bouncySelectionIndicator ? : 0.5f;
-
-    [UIView animateWithDuration:duration
-                          delay:0.0f
-         usingSpringWithDamping:damping
-          initialSpringVelocity:velocity
-                        options:UIViewAnimationOptionBeginFromCurrentState|UIViewAnimationOptionCurveEaseInOut
-                     animations:^{
-                         self.selectionIndicator.frame = [self selectionIndicatorRect];
-                     }
-                     completion:^(BOOL finished) {
-                         [self enableAllButtonsInteraction:YES];
-                         button.userInteractionEnabled = NO;
-                         _transitioning = NO;
-                     }];
-    
-    [self sendActionsForControlEvents:UIControlEventValueChanged];
 }
 
 - (void)setDisplayCount:(BOOL)count
@@ -580,7 +564,7 @@
     
     _showsCount = count;
     
-    for (int i = 0; i < [self buttons].count; i++) {
+    for (NSUInteger i = 0; i < [self buttons].count; i++) {
         [self configureButtonForSegment:i];
     }
     
@@ -595,7 +579,7 @@
     
     _font = font;
     
-    for (int i = 0; i < [self buttons].count; i++) {
+    for (NSUInteger i = 0; i < [self buttons].count; i++) {
         [self configureButtonForSegment:i];
     }
     
@@ -610,7 +594,7 @@
     
     _showsGroupingSeparators = showsGroupingSeparators;
     
-    for (int i = 0; i < [self buttons].count; i++) {
+    for (NSUInteger i = 0; i < [self buttons].count; i++) {
         [self configureButtonForSegment:i];
     }
     
@@ -625,7 +609,7 @@
     
     _numberFormatter = numberFormatter;
     
-    for (int i = 0; i < [self buttons].count; i++) {
+    for (NSUInteger i = 0; i < [self buttons].count; i++) {
         [self configureButtonForSegment:i];
     }
     
@@ -652,7 +636,7 @@
 
 - (void)insertAllSegments
 {
-    for (int i = 0; i < self.numberOfSegments; i++) {
+    for (NSUInteger i = 0; i < self.numberOfSegments; i++) {
         [self addButtonForSegment:i];
     }
 }
@@ -678,7 +662,7 @@
 - (void)configureSegments
 {
     for (UIButton *button in [self buttons]) {
-        [self configureButtonForSegment:button.tag];
+        [self configureButtonForSegment:(NSUInteger)button.tag];
     }
     
     self.selectionIndicator.frame = [self selectionIndicatorRect];
@@ -720,7 +704,6 @@
 - (void)willSelectedButton:(id)sender
 {
     UIButton *button = (UIButton *)sender;
-    
     if (!self.isTransitioning) {
         self.selectedSegmentIndex = button.tag;
     }
